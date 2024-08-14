@@ -1,0 +1,504 @@
+---
+title: "Preprocesing - step 1"
+output: html_notebook
+---
+
+# Checkpoint to load workspace
+
+```{r re-load packages, echo=FALSE, results='hide'}
+## requirements
+require(scater)
+require(Matrix)
+require(SingleCellExperiment)
+require(scran)
+library(TxDb.Mmusculus.UCSC.mm10.ensGene)
+library(org.Mm.eg.db)
+options(stringsAsFactors = FALSE)
+require(RColorBrewer)
+require(slingshot)
+require(batchelor)
+require(irlba)
+
+## PsiNorm package
+require(scone)
+
+library(scran)
+
+library(ggplot2)
+library(extrafont)
+```
+
+```{r, results='hide'}
+load(file = "My_Object.RData")
+```
+
+```{r}
+imp.genes <- c('Klf4', 'Klf2', 'Esrrb', 'Tfcp2l1', 'Tbx3', 'Stat3', 'Tcf7l1',
+       'Nanog', 'Sall4', 'Pou5f1', 'Sox2', 'Dnmt3a', 'Dnmt3b', 'Utf1',
+       'Otx2', 'Etv5', 'Etv4', 'Nr0b1', 'Zic3', 'Lef1', 'Tcf15', 'Gbx2',
+       'Pou3f1', 'Rbpj')
+
+```
+
+# Dimensionality Reduction
+```{r}
+set.seed(100)
+sce <- runPCA(sce, subset_row = present.signs)     
+plotPCA(sce, colour_by ="hashID")
+```
+
+```{r}
+set.seed(100)
+sce <- runTSNE(sce, subset_row = present.signs)     
+plotTSNE(sce, colour_by ="hashID")
+```
+
+```{r}
+set.seed(100)
+sce <- runUMAP(sce,  ncomponents=2, dimred ="TSNE", n_neighbors = 11, min_dist=0.9, spread=0.55)
+plotUMAP(sce, colour_by ="hashID")
+```
+
+
+
+
+```{r}
+save_dir <- "/Users/cleliacorridori/Dropbox_2021 Dropbox/Jorah Mormont/GRN_Inference/FIG/Preprocessing/"
+
+adjustments <- theme(
+  axis.text.x = element_text(size = 25), # Ticks dell'asse X
+  axis.text.y = element_text(size = 25), # Ticks dell'asse Y
+  axis.title.x = element_text(size = 23), # Etichetta asse X
+  axis.title.y = element_text(size = 23), # Etichetta asse Y
+  legend.text = element_text(size = 23), # Testo della legenda
+  legend.title = element_text(size = 23), # Titolo della legenda
+  legend.key.size = unit(3, "lines") #
+)
+
+# Plot TSNE 
+tsne_plot <- plotTSNE(sce, colour_by = "hashID")
+tsne_plot <- tsne_plot + theme(text = element_text(size = 22)) + adjustments +  guides(colour = guide_legend(title = NULL, override.aes = list(size = 10) )) 
+
+tiff(file.path(save_dir, "tsne_plot.tiff"), width = 9, height = 5, units = "in", res = 500)
+print(tsne_plot)
+dev.off()
+
+# Plot UMAP 
+umap_plot <- plotUMAP(sce, colour_by = "hashID")
+umap_plot <- umap_plot + theme(text = element_text(size = 18)) + adjustments + guides(colour = guide_legend(title = NULL, override.aes = list(size = 10) )) 
+
+tiff(file.path(save_dir, "umap_plot.tiff"), width = 9, height = 5, units = "in", res = 500)
+print(umap_plot)
+dev.off()
+
+# Plot UMAP 
+umap_plot_cluster <- plotUMAP(sce, colour_by = "cluster")
+umap_plot_cluster <- umap_plot_cluster + theme(text = element_text(size = 18)) + adjustments +  guides(colour = guide_legend(title = NULL, override.aes = list(size = 10)) )
+
+tiff(file.path(save_dir, "umap_plot_by_clusters.tiff"), width = 8.7, height = 5, units = "in", res = 500)
+print(umap_plot_cluster)
+dev.off()
+
+```
+
+
+```{r}
+save_dir <- "/Users/cleliacorridori/Dropbox_2021 Dropbox/Jorah Mormont/GRN_Inference/FIG/Preprocessing/Violin/"
+
+if (!file.exists(save_dir)) {
+  dir.create(save_dir, recursive = TRUE)
+}
+
+# Check if directory exists
+if (!file.exists(save_dir)) {
+  stop("Unable to create directory.")
+}
+
+cnts <- 0
+for (ii in imp.genes) {
+  cnts <- cnts + 1
+  plot <- plotExpression(sce, features = ii, x = I(sce$cluster), colour_by = I(sce$cluster))
+  plot <- plot + theme(text = element_text(size = 20))
+  tiff_filename <- file.path(save_dir, paste(cnts, as.character(ii), ".tiff", sep = ""))
+  tiff(filename = tiff_filename, width = 6, height = 4, units = "in", res = 400)
+  print(plot)
+  dev.off()
+}
+
+```
+
+
+```{r}
+colData(sce)$Klf4 <- (logcounts(sce)["Klf4", ])
+colData(sce)$Klf2 <- (logcounts(sce)["Klf2", ])
+colData(sce)$Esrrb <- (logcounts(sce)["Esrrb", ])
+colData(sce)$Tfcp2l1 <- (logcounts(sce)["Tfcp2l1", ])
+colData(sce)$Tbx3 <- (logcounts(sce)["Tbx3", ])
+colData(sce)$Stat3 <- (logcounts(sce)["Stat3", ])
+colData(sce)$Esrrb <- (logcounts(sce)["Esrrb", ])
+colData(sce)$Tcf7l1 <- (logcounts(sce)["Tcf7l1", ])
+colData(sce)$Nanog <- (logcounts(sce)["Nanog", ])
+colData(sce)$Sall4 <- (logcounts(sce)["Sall4", ])
+colData(sce)$Pou5f1 <- (logcounts(sce)["Pou5f1", ])
+colData(sce)$Sox2 <- (logcounts(sce)["Sox2", ])
+colData(sce)$Dnmt3a <- (logcounts(sce)["Dnmt3a", ])
+colData(sce)$Dnmt3b <- (logcounts(sce)["Dnmt3b", ])
+colData(sce)$Utf1 <- (logcounts(sce)["Utf1", ])
+colData(sce)$Otx2 <- (logcounts(sce)["Otx2", ])
+colData(sce)$Etv5 <- (logcounts(sce)["Etv5", ])
+colData(sce)$Etv4 <- (logcounts(sce)["Etv4", ])
+colData(sce)$Nr0b1 <- (logcounts(sce)["Nr0b1", ])
+colData(sce)$Zic3 <- (logcounts(sce)["Zic3", ])
+colData(sce)$Lef1 <- (logcounts(sce)["Lef1", ])
+colData(sce)$Tcf15 <- (logcounts(sce)["Tcf15", ])
+colData(sce)$Gbx2 <- (logcounts(sce)["Gbx2", ])
+colData(sce)$Pou3f1 <- (logcounts(sce)["Pou3f1", ])
+colData(sce)$Rbpj <- (logcounts(sce)["Rbpj", ])
+
+```
+
+
+```{r}
+# Initialize variables to store overall maximum 
+overall_max <- -Inf  
+
+# Loop through each gene and update the max and min values
+for (gene in imp.genes) {
+  current_value <- logcounts(sce)[gene, ]  # Get values for the current gene
+  
+  # Update overall maximum if current value is greater
+  overall_max <- max(overall_max, max(current_value))}
+
+overall_min <- 0.0
+
+```
+
+```{r}
+font <- "Avenir"
+font.size.fig <- 34  
+colors.spectral <- brewer.pal(11, "Spectral")
+colors.umap <- rev(colors.spectral)
+
+cnts <- 0
+for (ii in imp.genes) {
+  cnts <- cnts + 1
+  # plotting UMAP for each gene
+  p <- plotUMAP(sce, colour_by = ii, point_alpha = 0.85, point_size = 2)+
+    scale_colour_gradientn(colours = colors.umap, limits = c(overall_min, overall_max), name= "Normalised GE") +
+    theme_minimal() +
+    theme(
+      text = element_text(size = font.size.fig, family = font),
+      axis.text = element_text(size = font.size.fig, family = font),
+      axis.title = element_text(size = font.size.fig, family = font),
+      legend.title = element_text(size = font.size.fig, family = font),
+      legend.text = element_text(size = font.size.fig, family = font),
+      legend.key.size = unit(2.5, "cm"),
+      legend.key.width = unit(1.2 , "cm"),
+      legend.direction = "vertical",
+      legend.position = "left"
+    ) +
+    ggtitle(ii)+
+    guides(color = guide_colorbar(
+      title.position = "left", 
+      title.vjust = 0.3, 
+      title.hjust = 0.5,
+      title.theme = element_text(size = font.size.fig, family = font, angle = 90),
+      label.theme = element_text(size = font.size.fig, family = font), 
+      palette = colors.umap
+    ))
+  ggsave(paste0("plots/GE_genes_UMAP/", cnts, "_", as.character(ii), ".svg"),
+         plot = p,
+         device = "svg",
+         width = 10,
+         height = 6.5 )
+}
+```
+
+
+# Clusters
+
+```{r}
+g <- buildSNNGraph(sce, k=30, use.dimred = 'UMAP')
+clust <- igraph::cluster_walktrap(g)$membership
+sce$cluster <- factor(clust)
+table(clust)
+
+reducedDim(sce, "UMAP") [,2] <- reducedDim(sce, "UMAP")[,2]*0.5
+plotUMAP(sce, colour_by= "cluster")
+```
+
+```{r cluster grid search}
+# n.k <- c(120, 110, 100)
+# for (kk in n.k){
+#   print(kk)
+#   set.seed(100)
+#   g <- buildSNNGraph(sce, k=kk, use.dimred = 'UMAP')
+#   clust <- igraph::cluster_walktrap(g)$membership       # or # clust <- igraph::cluster_fast_greedy(g)$membership
+#   sce$cluster <- factor(clust)
+#   plotUMAP(sce, colour_by= "cluster")
+#   ggsave(paste("plots/Cluster_grid/nk",as.character(kk),".png"),
+#              width = 6,
+#              height = 4,)
+#   }
+```
+
+```{r merging clusters}
+colData(sce)$cluster[colData(sce)$cluster==15]=3
+colData(sce)$cluster[colData(sce)$cluster==18]=3
+colData(sce)$cluster[colData(sce)$cluster==8]=3
+colData(sce)$cluster[colData(sce)$cluster==17]=5
+colData(sce)$cluster[colData(sce)$cluster==6]=5
+colData(sce)$cluster[colData(sce)$cluster==10]=5
+colData(sce)$cluster[colData(sce)$cluster==7]=5
+
+colData(sce)$cluster[colData(sce)$cluster==16]=11
+colData(sce)$cluster[colData(sce)$cluster==18]=11
+colData(sce)$cluster[colData(sce)$cluster==19]=11
+colData(sce)$cluster[colData(sce)$cluster==20]=11
+colData(sce)$cluster[colData(sce)$cluster==1]=11
+colData(sce)$cluster[colData(sce)$cluster==14]=11
+
+colData(sce)$cluster[colData(sce)$cluster==12]=4
+colData(sce)$cluster[colData(sce)$cluster==9]=4
+
+colData(sce)$cluster[colData(sce)$cluster==2]=1
+colData(sce)$cluster[colData(sce)$cluster==3]=2
+colData(sce)$cluster[colData(sce)$cluster==5]=3
+colData(sce)$cluster[colData(sce)$cluster==4]=5
+colData(sce)$cluster[colData(sce)$cluster==11]=4
+colData(sce)$cluster[colData(sce)$cluster==13]=6
+plotUMAP(sce, colour_by= "cluster")
+```
+
+
+```{r violin plots}
+cnts<- 0
+for (ii in imp.genes){
+  cnts<- cnts+1
+  plotExpression(sce, features=ii,
+    x=I(sce$cluster), colour_by=I(sce$cluster))
+
+  ggsave(paste("plots/GE_genes_violin_clusters/",cnts,as.character(ii),".png"),
+         width = 6,
+         height = 4,)
+}
+```
+
+
+
+```{r}
+set.seed(100)
+sce <- runPCA(sce, subset_row = present.signs)
+plotPCA(sce, colour_by ="hashID")
+
+# plotPCA(sce, colour_by ="cluster")
+```
+
+
+# Marker Genes
+```{r, echo=FALSE, results='hide', warning=FALSE}
+cbm_all.up <- scran::findMarkers(
+  sce, groups = sce$cluster, 
+  pval.type = "all", direction = "up"
+)
+```
+
+```{r, echo=FALSE, results='hide', warning=FALSE}
+cbm_all.down <- scran::findMarkers(
+  sce, groups = sce$cluster, 
+  pval.type = "all", direction = "down"
+)
+```
+
+```{r}
+clus.toprint <- "1" # for the anomalous cluster
+markers.2clcs.up   = rownames(cbm_all.up[[clus.toprint]])[1:100] 
+markers.2clcs.down = rownames(cbm_all.down[[clus.toprint]])[1:100] 
+# Check if there are important genes
+intersect(markers.2clcs.up, imp.genes)
+intersect(markers.2clcs.down, imp.genes)
+```
+
+```{r}
+wrt.up <- FALSE
+if (wrt.up==TRUE){
+  fileConn<-file("Markers_clust_up.txt")
+  writeLines(markers.2clcs.up , fileConn)
+  close(fileConn)}
+
+wrt.down <- FALSE
+if (wrt.down==TRUE){
+  fileConn<-file("Markers_clust_down.txt")
+  writeLines(markers.2clcs.down , fileConn)
+  close(fileConn)}
+
+```
+
+# 2CLC state
+
+```{r characterization}
+# Creating a sce object for the anomalous cluster
+n.cluster <- 1
+anom.cluster <- sce$cluster %in% c(n.cluster)   
+table(anom.cluster)
+sce.clust_anom <- sce[, anom.cluster]
+
+plotHighestExprs(sce.clust_anom, n=50)
+
+plot(table(colData(sce.clust_anom)$hashID), "h")
+
+# plotExpression(sce.clust_anom, imp.genes)
+```
+
+```{r}
+colData(sce)$Eif1ad7 <- (logcounts(sce)["Eif1ad7", ])
+colData(sce)$Eif4a3l1 <- (logcounts(sce)["Eif4a3l1", ])
+colData(sce)$Zscan4d <- (logcounts(sce)["Zscan4d", ])
+colData(sce)$Zscan4c <- (logcounts(sce)["Zscan4c", ])
+colData(sce)$Dppa2 <- (logcounts(sce)["Dppa2", ])
+
+```
+
+```{r , fig.height = 3, fig.width = 6, fig.align = "center"}
+cnts<-0
+twoCLC <- c("Eif1ad7","Eif4a3l1", "Zscan4d","Zscan4c", "Dppa2")
+for (ii in twoCLC){
+  cnts<- cnts+1
+  plotUMAP(sce, colour_by= ii, point_alpha=0.3)
+  ggsave(paste("plots/",cnts,as.character(ii),".png"),
+         width = 6,
+         height = 4,)
+}
+```
+
+If we want to remove the 2CLCSs cluster:
+
+```{r deleting cluster}
+bad.cluster <- sce$cluster %in% c(n.cluster)
+
+sce <- sce[, !bad.cluster] # decomment here to remove
+plotUMAP(sce, colour_by= "cluster")
+
+```
+
+
+# Pseudotime: slingshot
+
+```{r}
+set.seed(24796)
+all.clust <- sce$cluster
+sce <- slingshot(sce, reducedDim = 'UMAP', extend= "n", clusterLabels=all.clust, start.clus='2', end.clus='6')
+```
+
+
+```{r}
+# library(grDevices)
+colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+  blue.colors <- colorRampPalette(c("lightblue", "#483D8B"))(100)
+plotcol <- blue.colors[cut(sce$slingPseudotime_1, breaks = 100)]
+
+plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 2)+
+lines(SlingshotDataSet(sce), lwd=2, col='black')
+```
+
+
+
+```{r}
+library(extrafont)
+
+df <- data.frame(UMAP1 = reducedDims(sce)$UMAP[,1], 
+                 UMAP2 = reducedDims(sce)$UMAP[,2],
+                 Pseudotime = sce$slingPseudotime_1)
+
+font <- "Avenir"
+font.size.fig <- 20
+p <- ggplot(df, aes(x = UMAP1, y = UMAP2, color = Pseudotime)) +
+  geom_point(size = 2) +
+  scale_color_gradientn(colors = colorRampPalette(c("lightblue", "#483D8B"))(100))+
+  theme_minimal() +
+  labs(color = "Pseudotime") +
+  theme(
+    axis.text = element_text(size = font.size.fig, family = font),
+    axis.title = element_text(size = font.size.fig, family = font),
+    legend.text = element_text(size = font.size.fig, family = font),
+    legend.title = element_text(size = font.size.fig, family = font),
+    legend.key.size = unit(2, "cm"),
+    legend.key.width = unit(1, "cm"),
+    legend.direction = "vertical",
+    legend.position = "left"
+  ) +
+  guides(color = guide_colorbar(title.position = "left", title.vjust = 0.3, title.hjust=0.5, 
+                                title.theme = element_text(size = font.size.fig, family = font, angle = 90),
+                                label.theme = element_text(size = font.size.fig, family = font)))
+
+ggsave("preprocessing_plotUMAP_pst_with_colorbar.svg", plot = p, device = "svg", width = 8, height = 5)
+
+```
+
+
+```{r pst without trajectory}
+plotUMAP(sce, colour_by ="slingPseudotime_1") +
+ scale_fill_distiller(palette = "Spectral", direction = 1)+
+  theme_classic()
+```
+
+```{r pst in PCA space}
+# plotPCA(sce, colour_by ="slingPseudotime_1") +
+#  scale_fill_distiller(palette = "Spectral", direction = 1)+  
+#   theme_classic()
+
+# with anpther style
+# colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100)
+# plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
+# plot(reducedDims(sce)$PCA, col = plotcol, pch=16, asp = 1)
+```
+
+```{r}
+plotColData(sce, x ="slingPseudotime_1", y= "hashID", colour_by = "hashID")
+
+
+# Plotting
+plot <- plotColData(sce, x = "slingPseudotime_1", y = "hashID", colour_by = "hashID") +
+  theme(text = element_text(size = 21)) +  # Increase font size to 20
+  ylab("Time") +  # Set y-axis label to "Time"
+  guides(colour = guide_legend(title = NULL))  # Remove legend title
+
+# Directory to save the plot
+save_dir <- "/Users/cleliacorridori/Dropbox_2021 Dropbox/Jorah Mormont/GRN_Inference/FIG/Preprocessing/"
+
+# Save as TIFF in the specified directory
+tiff(file.path(save_dir, "plotColData.tiff"), width = 7, height = 5, units = "in", res = 300)
+print(plot)
+dev.off()
+
+```
+
+```{r mean GE in pseudotime}
+cnts<- 0
+for (ii in imp.genes){
+  cnts<- cnts+1
+  plotExpression(sce, ii, x ="slingPseudotime_1", show_smooth = TRUE, scales = "free", ncol=1)
+  ggsave(paste("plots/GE_genes_inPseudoTime/",cnts,as.character(ii),"Norm.png"),
+         width = 6,
+         height = 4,)
+}
+```
+
+To save:
+
+```{r}
+cellinfo <-cbind(cell = colnames(sce), timepoint = sce$hashID, pseudotime =  sce$slingPseudotime_1)
+head(cellinfo)
+wrt <- FALSE
+if (wrt==TRUE){                
+  write.table(cellinfo, "/Users/cleliacorridori/Dropbox_2021\ Dropbox/Jorah\ Mormont/Code/Work/0_PreliminaryAnalysis_scRNA-seq/3Analysis_with2clc/cellinfo_pseudotime_3no2CLC.txt", quote = F)
+  }
+```
+
+```{r}
+system("say Done!")
+```
+
+```{r}
+save.image(file = "scRNAseq_preprocessing_LogNorm_no2clcs_23_11_21.RData")
+```

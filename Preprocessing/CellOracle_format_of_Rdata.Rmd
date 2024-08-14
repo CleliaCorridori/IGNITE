@@ -1,0 +1,89 @@
+---
+title: "kick out "
+output: html_notebook
+---
+
+# Checkpoint to load workspace
+
+```{r re-load packages, echo=FALSE, results='hide'}
+## requirements
+require(scater)
+require(Matrix)
+require(SingleCellExperiment)
+require(scran)
+library(TxDb.Mmusculus.UCSC.mm10.ensGene)
+library(org.Mm.eg.db)
+options(stringsAsFactors = FALSE)
+require(RColorBrewer)
+require(slingshot)
+require(batchelor)
+require(irlba)
+
+## PsiNorm package
+require(scone)
+
+library(scran)
+
+library(ggplot2)
+library(extrafont)
+library(reticulate)
+```
+
+
+```{r}
+imp.genes <- c('Klf4', 'Klf2', 'Esrrb', 'Tfcp2l1', 'Tbx3', 'Stat3', 'Tcf7l1',
+       'Nanog', 'Sall4', 'Pou5f1', 'Sox2', 'Dnmt3a', 'Dnmt3b', 'Utf1',
+       'Otx2', 'Etv5', 'Etv4', 'Nr0b1', 'Zic3', 'Lef1', 'Tcf15', 'Gbx2',
+       'Pou3f1', 'Rbpj')
+
+```
+
+
+# Load and save the dataset for Cell Oracle
+
+```{r}
+load(file = "scRNAseq_preprocessing_LogNorm_no2clcs_23_11_21.RData")
+
+sce
+```
+
+```{r}
+use_condaenv("celloracle_env")
+py_config()
+
+```
+
+```{r}
+non_atomic_columns <- sapply(colData(sce), function(x) !is.atomic(x))
+
+non_atomic_column_names <- names(non_atomic_columns[non_atomic_columns])
+print(non_atomic_column_names)
+
+colData(sce) <- colData(sce)[, !non_atomic_columns]
+```
+
+```{r}
+library(zellkonverter)
+
+anndata <- SCE2AnnData(sce)
+
+```
+
+```{r}
+# Transfer the AnnData object from R to Python
+py$anndata_r <- anndata
+
+# Use Python's 'anndata' library to save the file
+py_run_string("anndata_r.write_h5ad('/Users/clelia/Dropbox_2021 Dropbox/Jorah Mormont/Cell Oracle/scRNA_our/data/trial_anndata_object_23_11_21_OriginalPreprocessing.h5ad')")
+
+```
+
+```{r}
+py_run_string("print(type(anndata_r))")
+
+```
+
+```{r}
+save.image(file = "CellOracleData_ClustMerged_23_11_21_Original.RData")
+
+```

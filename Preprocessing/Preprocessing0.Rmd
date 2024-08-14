@@ -1,0 +1,281 @@
+---
+title: "R preprocessing - step 0"
+output: html_notebook
+---
+
+# Load packages
+
+here only RC9, save all for batch effect correction
+
+```{r load packages, echo=FALSE}
+## requirements
+require(scater)
+require(Matrix)
+require(SingleCellExperiment)
+require(scran)
+library(TxDb.Mmusculus.UCSC.mm10.ensGene)
+library(org.Mm.eg.db)
+options(stringsAsFactors = FALSE)
+require(RColorBrewer)
+require(slingshot)
+require(batchelor)
+require(irlba)
+
+## PsiNorm package
+require(scone)
+```
+
+# Load Data
+
+```{r load data, echo=FALSE}
+matrix_dir = "/Users/cleliacorridori/Dropbox_2021\ Dropbox/Jorah\ Mormont/Code/Work/0_PreliminaryAnalysis_scRNA-seq/filtered_feature_bc_matrix/"
+barcode.path <- paste0(matrix_dir, "barcodes.tsv.gz")
+features.path <- paste0(matrix_dir, "features.tsv.gz")
+matrix.path <- paste0(matrix_dir, "matrix.mtx.gz")
+
+mat <- readMM(file = matrix.path)
+feature.names = read.delim(features.path, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)
+barcode.names = read.delim(barcode.path, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)
+colnames(mat) = barcode.names$V1
+rownames(mat) = feature.names$V1
+#remove the -1 on cell IDs
+colnames(mat) <-  sapply(strsplit(colnames(mat), split = "-", fixed=T), function(x) (x[1])) #strsslit makes list, we want 1. part as no list
+
+```
+
+# SCE Object
+
+```{r}
+sce <- SingleCellExperiment(assays = list(counts = mat))
+
+dim(sce) # dataset dimension=genesxcells
+
+rowData(sce)$ENSEMBL <- rownames(sce) #genes
+
+# even if there are short names now, use old way to get positions
+symb <- mapIds(org.Mm.eg.db, keys=rownames(sce), keytype="ENSEMBL", column="SYMBOL")
+rowData(sce)$SYMBOL <- symb #other version of the genes name (the one that we use)
+
+new.names <- rowData(sce)$SYMBOL
+missing.name <- is.na(new.names)
+new.names[missing.name] <- rowData(sce)$ENSEMBL[missing.name] #take the ID if there is no symbol
+dup.name <- new.names %in% new.names[duplicated(new.names)]
+
+new.names[dup.name] <- paste0(new.names, "_", rowData(sce)$ENSEMBL)[dup.name]
+rownames(sce) <- new.names
+
+
+tail(rownames(sce)) # row indices
+tail(rowData(sce))  # data set
+
+```
+
+```{r}
+# set channel using a reference one  (?) --> TxDb.Mmusculus.UCSC.mm10.ensGene
+location <- mapIds(TxDb.Mmusculus.UCSC.mm10.ensGene, keys=rowData(sce)$ENSEMBL, 
+    column="CDSCHROM", keytype="GENEID")
+rowData(sce)$CHR <- location
+
+summary(location=="chrM")
+
+```
+
+# Time information (hash info)
+
+```{r}
+hash_dir = "/Users/cleliacorridori/Dropbox_2021\ Dropbox/Jorah\ Mormont/Code/Work/input_data/"
+hash.path <- paste0(hash_dir, "RC9_seurat_hashID.csv")
+tags <- read.csv(hash.path)
+head(tags)
+# dim(tags) #for 16194 cells, not for alle the ones of the dataset (16233)
+```
+
+Check how many cells belong to each time point
+
+```{r}
+table(tags$hash.ID)
+```
+
+We use only the cells that have the time information
+
+```{r}
+sce <- sce[, colnames(sce) %in% tags$X]
+dim(sce)
+identical(colnames(sce), tags$X)
+```
+
+```{r}
+sce$hashID <- tags$hash.ID
+
+```
+
+
+# Removing Double and Negative cells
+
+```{r}
+is.doublet <- sce$hashID == "Doublet"   
+sce <- sce[, !is.doublet]    
+
+is.neg <- sce$hashID == "Negative" 
+sce <- sce[, !is.neg]
+dim(sce)
+
+```
+
+# QC
+
+```{r}
+per.cell  <-perCellQCMetrics(sce, subsets=list(Mito=which(location=="chrM")), threshold=0)
+
+summary(per.cell$total)
+summary(per.cell$detected)
+```
+
+```{r, echo=FALSE}
+colData(sce) <- cbind(colData(sce), per.cell)
+
+plotColData(sce, x = "sum", y="subsets_Mito_percent", other_fields="hashID") + facet_wrap(~hashID)
+```
+
+outlier
+
+```{r}
+qc.stats <- quickPerCellQC(per.cell, percent_subsets="subsets_Mito_percent")
+
+colSums(as.matrix(qc.stats))
+```
+
+```{r}
+sce <- sce[,!qc.stats$discard]
+plotColData(sce, x = "sum", y="subsets_Mito_percent", 
+   other_fields="hashID") + facet_wrap(~hashID)
+```
+
+
+
+```{r}
+#plotHighestExprs(sce, n=50) 
+```
+
+```{r}
+ave <- calculateAverage(sce)
+# Average GE per cell
+rowData(sce)$AveCount <- ave
+```
+
+
+```{r}
+# nexprs: Counting the number of non-zero counts in each row (per features) --> #cell per features
+num.cells <- nexprs(sce, byrow = T)
+smoothScatter(log10(ave), log(num.cells), ylab="Number of cells", 
+    xlab=expression(Log[10]~"average count"))
+```
+
+## Remove genes
+
+remove all that is not expressed in less 20 cells
+
+```{r}
+keep_feature <- num.cells > 20
+sce <- sce[keep_feature,]  
+table(keep_feature)
+```
+
+# Output data
+
+All the printed/saved matrices have the first column with the gene names and the first row with the cell names. In the file name the signature "w00" means "with time 00h".
+
+```{r}
+cell_names <- matrix(colnames(sce)) #cells
+tr_CellNames <- t(cell_names)
+gene_names <- matrix(rownames(sce)) #genes
+
+dim(cell_names)
+dim(gene_names)
+
+```
+
+## LogNorm DATA
+
+```{r}
+# raw
+raw_GE <- counts(sce)
+raw_GE <- matrix(data = raw_GE, nrow = 13833  , ncol = 9894)
+assay(sce, "counts", withDimnames=FALSE) <- raw_GE
+
+# LogNorm
+sce <- logNormCounts(sce)
+
+# PsiNorm
+sce<-PsiNorm(sce,  whichAssay = "counts")
+sce<-logNormCounts(sce, name="psicounts")
+
+assays(sce)$psicounts[1:3,1:3]
+```
+
+```{r save_logNorm}
+Norm_GE <- logcounts(sce)
+Norm_GE <- matrix(data = Norm_GE, nrow = 13833  , ncol = 9894)
+
+Norm_GE.all <- rbind(tr_CellNames, Norm_GE)
+dim(Norm_GE.all)
+
+Norm_GE.all <- cbind(rbind(1,gene_names), Norm_GE.all)
+dim(Norm_GE.all)
+
+write.table(Norm_GE.all, "logNorm_check.csv",  sep = ",", col.names = NA)
+
+```
+
+# Select Informative Genes
+
+modeling mean-variance trend follow new selection of features <https://osca.bioconductor.org/feature-selection.html#variance-of-the-log-counts>
+
+```{r}
+dec <- modelGeneVar(sce, block= sce$sample)
+#Model the variance of the log-expression profiles for each gene, decomposing it into technical and biological components based on a fitted mean-variance trend.
+```
+
+```{r}
+per.block <- dec$per.block
+for (i in seq_along(per.block)) {
+    decX <- per.block[[i]]
+    plot(decX$mean, decX$total, xlab="Mean log-expression", 
+        ylab="Variance", main=names(per.block)[i])
+    curve(metadata(decX)$trend(x), col="blue", add=TRUE)
+}
+```
+
+
+```{r}
+# Get the top 2000 genes.
+top.hvgs <- getTopHVGs(dec, n=2000)
+str(top.hvgs)
+```
+
+```{r}
+# Signatures from Carbognin et al. 2023
+top.signs <- read.table("6signs.txt", header = TRUE, sep = "", dec = ".")
+top.signs <- top.signs[,1]
+str(top.signs)
+
+all.genes <- rownames(sce)
+
+present.signs <-all.genes[all.genes %in% top.signs]
+
+```
+
+# Checkpoint to save
+
+```{r}
+# save.image(file = "My_Object_check.RData")
+```
+
+```{r}
+system("say Done!")
+```
+
